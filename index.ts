@@ -111,6 +111,7 @@ function registerMissing(pi: ExtensionAPI, candidates: ModelsDevModel[]): boolea
 		const additions = missing.map((c) => buildEntry(c, template));
 
 		pi.registerProvider(PROVIDER, {
+			baseUrl: template.baseUrl,
 			models: [...existing, ...additions],
 		});
 		return true;
