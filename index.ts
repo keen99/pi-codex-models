@@ -20,7 +20,7 @@ import { dirname, join } from "node:path";
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const PROVIDER = "openai-codex";
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-const ID_PREFIX = "gpt-6";
+const ID_PREFIXES = ["gpt-5.6", "gpt-6"];
 
 interface ModelsDevModel {
 	id?: string;
@@ -55,7 +55,8 @@ async function fetchCandidates(): Promise<ModelsDevModel[]> {
 		const data = (await response.json()) as Record<string, { models?: Record<string, ModelsDevModel> }>;
 		const openai = data.openai?.models ?? {};
 		const models = Object.values(openai).filter(
-			(m): m is ModelsDevModel => typeof m.id === "string" && m.id.startsWith(ID_PREFIX),
+			(m): m is ModelsDevModel =>
+				typeof m.id === "string" && ID_PREFIXES.some((p) => m.id!.startsWith(p)),
 		);
 		try {
 			mkdirSync(dirname(CACHE_FILE), { recursive: true });
