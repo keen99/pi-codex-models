@@ -1,0 +1,20 @@
+{
+	"name": "pi-codex-models",
+	"version": "1.0.0",
+	"description": "Dynamically add new OpenAI GPT models (gpt-6 etc.) to the openai-codex provider on pinned pi versions whose bundled model list is frozen",
+	"license": "MIT",
+	"pi": {
+		"extensions": [
+			"./index.ts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-coding-agent": "*"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		}
+	},
+	"type": "module"
+}
