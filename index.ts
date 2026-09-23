@@ -19,6 +19,10 @@ import { dirname, join } from "node:path";
 
 const MODELS_DEV_URL = "https://models.dev/api.json";
 const PROVIDER = "openai-codex";
+// Cap context like pi-zai-models SAFE_CONTEXT: pi cannot safely compact
+// 1M -> 272K when switching models or during compaction recovery. Keep the
+// codex provider at the known-safe 272K ceiling; quota burn also matches.
+const SAFE_CONTEXT = 272000;
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 // Match every gpt-* model from models.dev's openai catalog that the codex
 // registry lacks — self-heals for all future releases, no prefix bumps.
@@ -84,7 +88,7 @@ function buildEntry(candidate: ModelsDevModel, template: Model<Api>): Model<Api>
 			cacheRead: candidate.cost?.cache_read ?? template.cost.cacheRead,
 			cacheWrite: candidate.cost?.cache_write ?? template.cost.cacheWrite,
 		},
-		contextWindow: candidate.limit?.context ?? template.contextWindow,
+		contextWindow: Math.min(candidate.limit?.context ?? template.contextWindow, SAFE_CONTEXT),
 		maxTokens: candidate.limit?.output ?? template.maxTokens,
 	};
 }
