@@ -112,6 +112,7 @@ function registerMissing(pi: ExtensionAPI, candidates: ModelsDevModel[]): boolea
 
 		pi.registerProvider(PROVIDER, {
 			baseUrl: template.baseUrl,
+			apiKey: "OPENAI_API_KEY",
 			models: [...existing, ...additions],
 		});
 		return true;
