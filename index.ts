@@ -87,25 +87,51 @@ function buildEntry(candidate: ModelsDevModel, template: Model<Api>): Model<Api>
 	};
 }
 
+/** Cached candidates read synchronously (for module-load registration). */
+function cachedCandidates(): ModelsDevModel[] {
+	try {
+		const cached = JSON.parse(readFileSync(CACHE_FILE, "utf8"));
+		return Array.isArray(cached) ? cached : [];
+	} catch {
+		return [];
+	}
+}
+
+/** Merge + register missing gpt-6 models onto the codex provider. */
+function registerMissing(pi: ExtensionAPI, candidates: ModelsDevModel[]): boolean {
+	try {
+		const existing = getModels(PROVIDER) as Model<Api>[];
+		if (!existing.length) return false;
+		const existingIds = new Set(existing.map((m) => m.id));
+		const missing = candidates.filter((c) => c.id && !existingIds.has(c.id));
+		if (!missing.length) return false;
+
+		// Template: closest existing sibling (same api/auth shape).
+		const template = existing.find((m) => m.id.startsWith("gpt-5")) ?? existing[0]!;
+		const additions = missing.map((c) => buildEntry(c, template));
+
+		pi.registerProvider(PROVIDER, {
+			models: [...existing, ...additions],
+		});
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export default function (pi: ExtensionAPI) {
+	// Sync path: register from disk cache immediately at load so `-p` CLI
+	// model resolution and the /model picker see the additions.
+	const cached = cachedCandidates();
+	if (cached.length) registerMissing(pi, cached);
+
+	// Async path: refresh from models.dev, then re-register if new ids appeared.
 	pi.on("session_start", async () => {
 		try {
-			const existing = getModels(PROVIDER) as Model<Api>[];
-			if (!existing.length) return;
-			const existingIds = new Set(existing.map((m) => m.id));
-
 			const candidates = await fetchCandidates();
-			const missing = candidates.filter((c) => c.id && !existingIds.has(c.id));
-			if (!missing.length) return;
-
-			// Template: closest existing sibling (same api/auth shape).
-			const template = existing.find((m) => m.id.startsWith("gpt-5")) ?? existing[0]!;
-			const additions = missing.map((c) => buildEntry(c, template));
-
-			pi.registerProvider(PROVIDER, {
-				models: [...existing, ...additions],
-			});
-			pi.notify(`codex-models: +${additions.map((m) => m.id).join(", ")}`, "info");
+			if (candidates.length && registerMissing(pi, candidates)) {
+				pi.notify(`codex-models: refreshed (${candidates.length} candidates)`, "info");
+			}
 		} catch {
 			/* never block startup */
 		}
