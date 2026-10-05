@@ -1,20 +1,29 @@
 {
-	"name": "pi-codex-models",
-	"version": "1.0.0",
-	"description": "Dynamically add new OpenAI GPT models (gpt-6 etc.) to the openai-codex provider on pinned pi versions whose bundled model list is frozen",
-	"license": "MIT",
-	"pi": {
-		"extensions": [
-			"./index.ts"
-		]
-	},
-	"peerDependencies": {
-		"@earendil-works/pi-coding-agent": "*"
-	},
-	"peerDependenciesMeta": {
-		"@earendil-works/pi-coding-agent": {
-			"optional": true
-		}
-	},
-	"type": "module"
+  "name": "pi-codex-models",
+  "version": "1.0.0",
+  "description": "Dynamically add new OpenAI GPT models (gpt-6 etc.) to the openai-codex provider on pinned pi versions whose bundled model list is frozen",
+  "license": "MIT",
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "^0.75.4",
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@earendil-works/pi-coding-agent": {
+      "optional": true
+    }
+  },
+  "type": "module",
+  "devDependencies": {
+    "@earendil-works/pi-ai": "^0.75.4",
+    "tsx": "^4.23.15"
+  },
+  "scripts": {
+    "test": "node --import tsx --test test/unit.test.ts",
+    "test:matrix": "node test/release-matrix.mjs"
+  }
 }

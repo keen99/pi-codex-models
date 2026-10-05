@@ -13,7 +13,7 @@
 
 import { getModels, type Model, type Api } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { mkdirSync, mtimeSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -35,17 +35,31 @@ interface ModelsDevModel {
 	cost?: { input?: number; output?: number; cache_read?: number; cache_write?: number };
 }
 
-const CACHE_FILE = join(
-	process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"),
-	"pi-codex-models",
-	"models-dev.json",
-);
+function cacheFile(): string {
+	return join(
+		process.env.XDG_CACHE_HOME ?? join(homedir(), ".cache"),
+		"pi-codex-models",
+		"models-dev.json",
+	);
+}
 
-/** Fetch models.dev openai section with 12h disk cache. Returns [] on failure. */
-async function fetchCandidates(): Promise<ModelsDevModel[]> {
+/** Harness/diag marker: env-gated JSON dump of what got registered. */
+function debugMarker(data: Record<string, unknown>): void {
+	if (process.env.CODEX_MODELS_DEBUG !== "1") return;
 	try {
-		if (Date.now() - mtimeSync(CACHE_FILE).getTime() < CACHE_TTL_MS) {
-			const cached = JSON.parse(readFileSync(CACHE_FILE, "utf8"));
+		const agentDir = process.env.PI_CODING_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+		mkdirSync(agentDir, { recursive: true });
+		writeFileSync(join(agentDir, "codex-models-registered.json"), JSON.stringify(data) + "\n");
+	} catch {
+		/* best-effort */
+	}
+}
+
+export async function fetchCandidates(): Promise<ModelsDevModel[]> {
+	try {
+		const cache = cacheFile();
+		if (Date.now() - statSync(cache).mtimeMs < CACHE_TTL_MS) {
+			const cached = JSON.parse(readFileSync(cache, "utf8"));
 			if (Array.isArray(cached)) return cached;
 		}
 	} catch {
@@ -64,8 +78,8 @@ async function fetchCandidates(): Promise<ModelsDevModel[]> {
 				typeof m.id === "string" && m.id.startsWith("gpt-"),
 		);
 		try {
-			mkdirSync(dirname(CACHE_FILE), { recursive: true });
-			writeFileSync(CACHE_FILE, JSON.stringify(models));
+			mkdirSync(dirname(cacheFile()), { recursive: true });
+			writeFileSync(cacheFile(), JSON.stringify(models));
 		} catch {
 			/* cache write best-effort */
 		}
@@ -96,33 +110,50 @@ function buildEntry(candidate: ModelsDevModel, template: Model<Api>): Model<Api>
 /** Cached candidates read synchronously (for module-load registration). */
 function cachedCandidates(): ModelsDevModel[] {
 	try {
-		const cached = JSON.parse(readFileSync(CACHE_FILE, "utf8"));
+		const cached = JSON.parse(readFileSync(cacheFile(), "utf8"));
 		return Array.isArray(cached) ? cached : [];
 	} catch {
 		return [];
 	}
 }
 
+/** Pure diff: candidates the codex registry lacks, templated for registration. */
+export function computeAdditions(
+	candidates: ModelsDevModel[],
+	existing: Model<Api>[],
+): Model<Api>[] {
+	if (!existing.length) return [];
+	const existingIds = new Set(existing.map((m) => m.id));
+	const missing = candidates.filter((c) => c.id && !existingIds.has(c.id));
+	if (!missing.length) return [];
+	// Template: closest existing sibling (same api/auth shape).
+	const template = existing.find((m) => m.id.startsWith("gpt-5")) ?? existing[0]!;
+	return missing.map((c) => buildEntry(c, template));
+}
+
 /** Merge + register missing gpt-6 models onto the codex provider. */
-function registerMissing(pi: ExtensionAPI, candidates: ModelsDevModel[]): boolean {
+export function registerMissing(
+	pi: ExtensionAPI,
+	candidates: ModelsDevModel[],
+	existingOverride?: Model<Api>[],
+): boolean {
 	try {
-		const existing = getModels(PROVIDER) as Model<Api>[];
+		const existing = (existingOverride ?? (getModels(PROVIDER) as Model<Api>[]));
 		if (!existing.length) return false;
-		const existingIds = new Set(existing.map((m) => m.id));
-		const missing = candidates.filter((c) => c.id && !existingIds.has(c.id));
-		if (!missing.length) return false;
+		const additions = computeAdditions(candidates, existing);
+		if (!additions.length) return false;
 
 		// Template: closest existing sibling (same api/auth shape).
 		const template = existing.find((m) => m.id.startsWith("gpt-5")) ?? existing[0]!;
-		const additions = missing.map((c) => buildEntry(c, template));
-
 		pi.registerProvider(PROVIDER, {
 			baseUrl: template.baseUrl,
 			apiKey: "OPENAI_API_KEY",
 			models: [...existing, ...additions],
 		});
+		debugMarker({ registered: true, count: additions.length, ids: additions.map((a) => a.id) });
 		return true;
-	} catch {
+	} catch (err) {
+		debugMarker({ registered: false, error: String(err) });
 		return false;
 	}
 }
