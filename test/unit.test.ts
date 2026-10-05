@@ -190,3 +190,20 @@ test("registerMissing: no candidates missing -> false, no registration", () => {
 	assert.equal(calls.length, 0);
 	cleanup();
 });
+
+// ---------- loadExistingCodex ----------
+import { loadExistingCodex } from "../index.js";
+test("loadExistingCodex: new-era providers/all surface returns real codex catalog", async () => {
+	const models = await loadExistingCodex();
+	assert.ok(models.length > 0, "expected non-empty codex catalog from pi-ai providers/all");
+	assert.ok(models.every((m) => typeof m.id === "string" && m.id.length > 0));
+});
+test("loadExistingCodex: result usable by computeAdditions (ids are strings, gpt-5 present as template source)", async () => {
+	const models = await loadExistingCodex();
+	const add = computeAdditions([{ id: "gpt-6-harness-fake" } as ModelsDevModel], models);
+	assert.equal(add.length, 1);
+	assert.equal(add[0].id, "gpt-6-harness-fake");
+	// template picked from gpt-5 sibling when present
+	const gpt5 = models.find((m) => m.id.startsWith("gpt-5"));
+	if (gpt5) assert.equal(add[0].api, gpt5.api);
+});
