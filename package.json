@@ -9,7 +9,7 @@
     ]
   },
   "peerDependencies": {
-    "@earendil-works/pi-ai": "^0.75.4",
+    "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*"
   },
   "peerDependenciesMeta": {
@@ -19,7 +19,7 @@
   },
   "type": "module",
   "devDependencies": {
-    "@earendil-works/pi-ai": "^0.75.4",
+    "@earendil-works/pi-ai": "^1.0.3",
     "tsx": "^4.23.15"
   },
   "scripts": {

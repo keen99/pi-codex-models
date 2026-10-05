@@ -11,7 +11,7 @@
  * full merged list: bundled models first, then the additions.
  */
 
-import { getModels, type Model, type Api } from "@earendil-works/pi-ai";
+import type { Model, Api } from "@earendil-works/pi-ai";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -117,6 +117,33 @@ function cachedCandidates(): ModelsDevModel[] {
 	}
 }
 
+/**
+ * Existing codex models, read from whichever catalog surface the installed
+ * pi-ai exposes. pi-ai tracks pi versions in lockstep: 0.75.x-era ships a
+ * top-level static getModels(); 1.x moved the catalog to the
+ * pi-ai/providers/all subpath (getBuiltinModels) and dropped the static.
+ * Feature-detect, never assume.
+ */
+export async function loadExistingCodex(): Promise<Model<Api>[]> {
+	try {
+		const all = (await import("@earendil-works/pi-ai/providers/all")) as {
+			getBuiltinModels?: (provider: string) => Model<Api>[];
+		};
+		if (typeof all.getBuiltinModels === "function") {
+			return all.getBuiltinModels(PROVIDER);
+		}
+	} catch {
+		/* subpath missing on old pi-ai — fall through */
+	}
+	const mod = (await import("@earendil-works/pi-ai")) as {
+		getModels?: (provider: string) => Model<Api>[];
+	};
+	if (typeof mod.getModels === "function") {
+		return mod.getModels(PROVIDER);
+	}
+	throw new Error("no model catalog surface in installed pi-ai");
+}
+
 /** Pure diff: candidates the codex registry lacks, templated for registration. */
 export function computeAdditions(
 	candidates: ModelsDevModel[],
@@ -159,17 +186,30 @@ export function registerMissing(
 }
 
 export default function (pi: ExtensionAPI) {
-	// Sync path: register from disk cache immediately at load so `-p` CLI
-	// model resolution and the /model picker see the additions.
-	const cached = cachedCandidates();
-	if (cached.length) registerMissing(pi, cached);
+	// Async from the start: reading the existing catalog is era-detected via
+	// dynamic import, so nothing here can be synchronous. Registers as early
+	// as the catalog read resolves.
+	(async () => {
+		try {
+			const cached = cachedCandidates();
+			if (cached.length) {
+				const existing = await loadExistingCodex();
+				registerMissing(pi, cached, existing);
+			}
+		} catch {
+			/* never block startup */
+		}
+	})();
 
-	// Async path: refresh from models.dev, then re-register if new ids appeared.
+	// Refresh path: models.dev fetch, then re-register if new ids appeared.
 	pi.on("session_start", async () => {
 		try {
 			const candidates = await fetchCandidates();
-			if (candidates.length && registerMissing(pi, candidates)) {
-				pi.notify(`codex-models: refreshed (${candidates.length} candidates)`, "info");
+			if (candidates.length) {
+				const existing = await loadExistingCodex();
+				if (registerMissing(pi, candidates, existing)) {
+					pi.notify(`codex-models: refreshed (${candidates.length} candidates)`, "info");
+				}
 			}
 		} catch {
 			/* never block startup */
