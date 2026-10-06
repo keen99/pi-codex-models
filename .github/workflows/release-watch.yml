@@ -2,7 +2,7 @@ name: release-watch
 
 on:
   schedule:
-    - cron: "8 10 * * *"
+    - cron: "6 * * * *"
   workflow_dispatch:
 
 permissions:
